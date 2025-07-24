@@ -1,0 +1,14 @@
+# Node modules and build output
+node_modules/
+dist/
+build/
+
+# Binaries and map files
+*.exe
+*.map
+*.node
+
+# IDE and environment files
+.vscode/
+.env
+.DS_Store
