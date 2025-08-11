@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Search, Heart, ShoppingCart, User, Star, Grid, List, SlidersHorizontal, Plus, Minus, Trash2, ArrowLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { Search, Heart, ShoppingCart, User, Star, Grid, List, SlidersHorizontal, Plus, Minus, Trash2, ArrowLeft, ChevronRight, X, Check, AlertCircle, Package, Truck, CreditCard, Gift, Percent, Clock, ShoppingBag } from 'lucide-react';
 
 export default function ShopZen() {
   // State management
@@ -30,6 +30,45 @@ export default function ShopZen() {
   const [showQuickView, setShowQuickView] = useState(false);
   const [quickViewProduct, setQuickViewProduct] = useState(null);
 
+  // Enhanced Cart State
+  const [couponCode, setCouponCode] = useState('');
+  const [estimatedDelivery, setEstimatedDelivery] = useState(null);
+  const [showCartSummary, setShowCartSummary] = useState(false);
+  const [cartStep, setCartStep] = useState('cart'); // cart, shipping, payment, confirmation
+  const [selectedShipping, setSelectedShipping] = useState('standard');
+  const [shippingAddress, setShippingAddress] = useState({
+    fullName: '',
+    address1: '',
+    address2: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    country: 'United States'
+  });
+
+  // Login/Signup forms state
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [signupForm, setSignupForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    confirmPassword: ''
+  });
+
+  // Available coupons for demonstration
+  const availableCoupons = [
+    { code: 'SAVE10', discount: 10, type: 'percentage', description: '10% off your order' },
+    { code: 'WELCOME20', discount: 20, type: 'fixed', description: '$20 off orders over $100' },
+    { code: 'FREESHIP', discount: 0, type: 'shipping', description: 'Free shipping on any order' }
+  ];
+
+  // Shipping options
+  const shippingOptions = [
+    { id: 'standard', name: 'Standard Shipping', price: 9.99, days: '5-7', description: 'Delivery in 5-7 business days' },
+    { id: 'express', name: 'Express Shipping', price: 19.99, days: '2-3', description: 'Delivery in 2-3 business days' },
+    { id: 'overnight', name: 'Overnight Shipping', price: 29.99, days: '1', description: 'Next business day delivery' }
+  ];
 
   // Categories
   const categories = ['All', 'Electronics', 'Fashion', 'Home & Garden', 'Sports', 'Beauty', 'Books', 'Toys'];
@@ -49,7 +88,8 @@ export default function ShopZen() {
       reviews: 128,
       badge: 'Sale',
       inStock: true,
-      stockCount: 45
+      stockCount: 45,
+      weight: 0.5
     },
     {
       id: 2,
@@ -64,7 +104,8 @@ export default function ShopZen() {
       reviews: 89,
       badge: 'Best Seller',
       inStock: true,
-      stockCount: 23
+      stockCount: 23,
+      weight: 0.3
     },
     {
       id: 3,
@@ -79,7 +120,8 @@ export default function ShopZen() {
       reviews: 156,
       badge: 'New',
       inStock: true,
-      stockCount: 78
+      stockCount: 78,
+      weight: 0.2
     },
     {
       id: 4,
@@ -94,7 +136,8 @@ export default function ShopZen() {
       reviews: 67,
       badge: 'Sale',
       inStock: false,
-      stockCount: 0
+      stockCount: 0,
+      weight: 0.8
     },
     {
       id: 5,
@@ -109,7 +152,8 @@ export default function ShopZen() {
       reviews: 203,
       badge: null,
       inStock: true,
-      stockCount: 34
+      stockCount: 34,
+      weight: 1.2
     },
     {
       id: 6,
@@ -124,12 +168,123 @@ export default function ShopZen() {
       reviews: 94,
       badge: 'Best Seller',
       inStock: true,
-      stockCount: 56
+      stockCount: 56,
+      weight: 0.6
     }
   ];
 
   // Get unique brands for filter
   const brands = [...new Set(products.map(product => product.brand))];
+
+  // Enhanced cart calculations
+  const getCartSubtotal = () => {
+    return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+  };
+
+  const getCouponDiscount = () => {
+    if (!appliedCoupon) return 0;
+    
+    const subtotal = getCartSubtotal();
+    if (appliedCoupon.type === 'percentage') {
+      return (subtotal * appliedCoupon.discount) / 100;
+    } else if (appliedCoupon.type === 'fixed') {
+      return Math.min(appliedCoupon.discount, subtotal);
+    }
+    return 0;
+  };
+
+  const getShippingCost = () => {
+    if (appliedCoupon && appliedCoupon.type === 'shipping') return 0;
+    const subtotal = getCartSubtotal();
+    if (subtotal > 100) return 0; // Free shipping over $100
+    
+    const selectedOption = shippingOptions.find(option => option.id === selectedShipping);
+    return selectedOption ? selectedOption.price : 9.99;
+  };
+
+  const getTaxAmount = () => {
+    const taxableAmount = getCartSubtotal() - getCouponDiscount();
+    return taxableAmount * 0.08; // 8% tax
+  };
+
+  const getCartTotal = () => {
+    return getCartSubtotal() - getCouponDiscount() + getShippingCost() + getTaxAmount();
+  };
+
+  const getCartItemCount = () => {
+    return cart.reduce((total, item) => total + item.quantity, 0);
+  };
+
+  // Apply coupon function
+  const applyCoupon = (code) => {
+    const coupon = availableCoupons.find(c => c.code.toLowerCase() === code.toLowerCase());
+    if (coupon) {
+      // Check minimum order requirements
+      if (coupon.code === 'WELCOME20' && getCartSubtotal() < 100) {
+        showNotification('Coupon requires minimum order of $100', 'error');
+        return;
+      }
+      
+      setAppliedCoupon(coupon);
+      setCouponCode('');
+      showNotification(`Coupon applied: ${coupon.description}`, 'success');
+    } else {
+      showNotification('Invalid coupon code', 'error');
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    showNotification('Coupon removed', 'info');
+  };
+
+  // Enhanced notification system
+  const showNotification = (message, type = 'info') => {
+    const notification = {
+      id: Date.now(),
+      message,
+      type
+    };
+    
+    setCartNotifications(prev => [...prev, notification]);
+    
+    setTimeout(() => {
+      setCartNotifications(prev => prev.filter(n => n.id !== notification.id));
+    }, 4000);
+  };
+
+  // Save for later functionality
+  const saveForLater = (productId) => {
+    const item = cart.find(item => item.id === productId);
+    if (item) {
+      setSavedForLater(prev => [...prev.filter(saved => saved.id !== productId), item]);
+      setCart(prev => prev.filter(item => item.id !== productId));
+      showNotification(`${item.name} saved for later`, 'info');
+    }
+  };
+
+  const moveToCart = (savedItem) => {
+    setSavedForLater(prev => prev.filter(item => item.id !== savedItem.id));
+    setCart(prev => [...prev, savedItem]);
+    showNotification(`${savedItem.name} moved to cart`, 'success');
+  };
+
+  const removeFromSaved = (productId) => {
+    const item = savedForLater.find(item => item.id === productId);
+    setSavedForLater(prev => prev.filter(item => item.id !== productId));
+    showNotification(`${item?.name} removed from saved items`, 'info');
+  };
+
+  // Calculate estimated delivery
+  useEffect(() => {
+    const selectedOption = shippingOptions.find(option => option.id === selectedShipping);
+    if (selectedOption) {
+      const today = new Date();
+      const deliveryDate = new Date(today);
+      deliveryDate.setDate(today.getDate() + parseInt(selectedOption.days.split('-')[1] || selectedOption.days));
+      setEstimatedDelivery(deliveryDate.toLocaleDateString());
+    }
+  }, [selectedShipping]);
 
   // Enhanced filtering and sorting logic
   const filteredAndSortedProducts = useMemo(() => {
@@ -177,8 +332,10 @@ export default function ShopZen() {
     currentPageNum * itemsPerPage
   );
 
-  // Animation helper function
-  const triggerAnimation = (productId, action) => {
+  // Fixed: Debounced animation helper function
+  const triggerAnimation = useCallback((productId, action) => {
+    if (animatingItems.has(productId)) return; // Prevent duplicate animations
+    
     setAnimatingItems(prev => new Set([...prev, productId]));
     setTimeout(() => {
       setAnimatingItems(prev => {
@@ -186,11 +343,13 @@ export default function ShopZen() {
         newSet.delete(productId);
         return newSet;
       });
-    }, 600);
-  };
+    }, 300); // Reduced from 600ms
+  }, [animatingItems]);
 
-  // Enhanced Add to Cart Animation
-  const triggerAddToCartAnimation = (productId) => {
+  // Fixed: Single animation state for add to cart
+  const triggerAddToCartAnimation = useCallback((productId) => {
+    if (addToCartAnimations.has(productId)) return; // Prevent duplicate animations
+    
     setAddToCartAnimations(prev => new Set([...prev, productId]));
     setTimeout(() => {
       setAddToCartAnimations(prev => {
@@ -198,33 +357,69 @@ export default function ShopZen() {
         newSet.delete(productId);
         return newSet;
       });
-    }, 1000);
-  };
+    }, 800); // Slightly reduced timing
+  }, [addToCartAnimations]);
 
-  // Cart functions
-  const addToCart = (product) => {
-    triggerAnimation(product.id, 'addToCart');
-    triggerAddToCartAnimation(product.id);
-    
-    const existingItem = cart.find(item => item.id === product.id);
+  const addToCart = useCallback((product, quantity = 1) => {
+  if (addToCartAnimations.has(product.id)) return;
+
+  if (product.stockCount < quantity) {
+    showNotification(`Only ${product.stockCount} items available in stock`, 'error');
+    return;
+  }
+
+  triggerAddToCartAnimation(product.id);
+
+  let message = '';
+  let type = 'success';
+
+  setCart(prevCart => {
+    const existingItem = prevCart.find(item => item.id === product.id);
+    let updatedCart;
+
     if (existingItem) {
-      setCart(cart.map(item => 
-        item.id === product.id 
-          ? { ...item, quantity: item.quantity + 1 }
-          : item
-      ));
+      const newQuantity = existingItem.quantity + quantity;
+      if (newQuantity > product.stockCount) {
+        message = `Cannot add more than ${product.stockCount} items`;
+        type = 'error';
+        updatedCart = prevCart;
+      } else {
+        message = `Updated ${product.name} quantity in cart`;
+        updatedCart = prevCart.map(item =>
+          item.id === product.id ? { ...item, quantity: newQuantity } : item
+        );
+      }
     } else {
-      setCart([...cart, { ...product, quantity: 1 }]);
+      message = `${product.name} added to cart`;
+      updatedCart = [...prevCart, { ...product, quantity }];
+    }
+
+    // ❌ Don't show notification here
+    return updatedCart;
+  });
+
+  // ✅ Trigger it after state update, runs only once
+  if (message) {
+    showNotification(message, type);
+  }
+}, [addToCartAnimations, triggerAddToCartAnimation]);
+
+
+  const removeFromCart = (productId) => {
+    const item = cart.find(item => item.id === productId);
+    setCart(cart.filter(item => item.id !== productId));
+    if (item) {
+      showNotification(`${item.name} removed from cart`, 'info');
     }
   };
 
-  const removeFromCart = (productId) => {
-    setCart(cart.filter(item => item.id !== productId));
-  };
-
   const updateQuantity = (productId, newQuantity) => {
+    const product = products.find(p => p.id === productId);
+    
     if (newQuantity <= 0) {
       removeFromCart(productId);
+    } else if (newQuantity > product.stockCount) {
+      showNotification(`Only ${product.stockCount} items available`, 'error');
     } else {
       setCart(cart.map(item => 
         item.id === productId 
@@ -234,26 +429,25 @@ export default function ShopZen() {
     }
   };
 
-  const getCartTotal = () => {
-    return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
-  };
-
-  const getCartItemCount = () => {
-    return cart.reduce((total, item) => total + item.quantity, 0);
-  };
-
   const clearCart = () => {
     setCart([]);
+    showNotification('Cart cleared', 'info');
   };
 
-  const toggleWishlist = (productId) => {
+  // Fixed: Optimized toggleWishlist function
+  const toggleWishlist = useCallback((productId) => {
+    // Prevent rapid successive calls
+    if (animatingItems.has(productId)) return;
+    
     triggerAnimation(productId, 'toggleWishlist');
-    if (wishlist.includes(productId)) {
-      setWishlist(wishlist.filter(id => id !== productId));
-    } else {
-      setWishlist([...wishlist, productId]);
-    }
-  };
+    setWishlist(prev => {
+      if (prev.includes(productId)) {
+        return prev.filter(id => id !== productId);
+      } else {
+        return [...prev, productId];
+      }
+    });
+  }, [animatingItems, triggerAnimation]);
 
   const handleBrandFilter = (brand) => {
     if (selectedBrands.includes(brand)) {
@@ -278,18 +472,24 @@ export default function ShopZen() {
       setUser({ email });
       setIsLoggedIn(true);
       setCurrentPage('home');
+      showNotification('Successfully logged in!', 'success');
     } else {
-      alert('Please enter valid credentials');
+      showNotification('Please enter valid credentials', 'error');
     }
   };
 
   const handleSignup = (userData) => {
     if (userData.email && userData.password && userData.firstName) {
+      if (userData.password !== userData.confirmPassword) {
+        showNotification('Passwords do not match', 'error');
+        return;
+      }
       setUser(userData);
       setIsLoggedIn(true);
       setCurrentPage('home');
+      showNotification('Account created successfully!', 'success');
     } else {
-      alert('Please fill in all required fields');
+      showNotification('Please fill in all required fields', 'error');
     }
   };
 
@@ -297,6 +497,7 @@ export default function ShopZen() {
     setUser(null);
     setIsLoggedIn(false);
     setCurrentPage('home');
+    showNotification('Successfully logged out', 'info');
   };
 
   // Helper function to render stars
@@ -309,36 +510,8 @@ export default function ShopZen() {
     ));
   };
 
-  // ProductCard Component
-  // Cart Notifications Component
-const CartNotifications = () => {
-  if (cartNotifications.length === 0) return null;
-  
-  return (
-    <div className="fixed top-4 right-4 z-50 space-y-2">
-      {cartNotifications.map((notification) => (
-        <div
-          key={notification.id}
-          className={`p-4 rounded-lg shadow-lg transform transition-all duration-500 ${
-            notification.type === 'success' ? 'bg-green-500 text-white' :
-            notification.type === 'error' ? 'bg-red-500 text-white' :
-            notification.type === 'info' ? 'bg-blue-500 text-white' :
-            'bg-gray-800 text-white'
-          } animate-slide-in-right`}
-        >
-          <div className="flex items-center space-x-2">
-            {notification.type === 'success' && <span>✓</span>}
-            {notification.type === 'error' && <span>✗</span>}
-            {notification.type === 'info' && <span>ℹ</span>}
-            <span>{notification.message}</span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-  const ProductCard = ({ product, viewMode }) => {
+  // Fixed: Optimized ProductCard Component
+  const ProductCard = React.memo(({ product, viewMode }) => {
     const isInWishlist = wishlist.includes(product.id);
     const isInCart = cart.some(item => item.id === product.id);
     const isAnimating = animatingItems.has(product.id);
@@ -346,13 +519,13 @@ const CartNotifications = () => {
 
     return (
       <div className={`bg-white rounded-lg shadow-sm border hover:shadow-lg transition-all duration-300 overflow-hidden ${
-        isAnimating ? 'animate-pulse scale-105' : ''
-      } ${isAddToCartAnimating ? 'ring-2 ring-blue-400 ring-opacity-60' : ''}`}>
+        isAnimating ? 'scale-105' : ''
+      }`}>
         <div className="relative group">
           <img
             src={product.image}
             alt={product.name}
-            className="w-full h-64 object-cover transition-all duration-700 group-hover:scale-110"
+            className="w-full h-64 object-cover transition-all duration-300 group-hover:scale-105"
           />
           
           {product.badge && (
@@ -365,15 +538,22 @@ const CartNotifications = () => {
             </span>
           )}
           
+          {product.stockCount < 10 && product.inStock && (
+            <span className="absolute top-3 right-12 bg-orange-500 text-white px-2 py-1 text-xs font-medium rounded-full shadow-lg">
+              Only {product.stockCount} left
+            </span>
+          )}
+          
           <button
             onClick={() => toggleWishlist(product.id)}
-            className={`absolute top-3 right-3 p-2 rounded-full shadow-lg transition-all duration-300 transform hover:scale-125 ${
+            className={`absolute top-3 right-3 p-2 rounded-full shadow-lg transition-all duration-300 transform hover:scale-110 ${
               isInWishlist 
                 ? 'bg-red-100 text-red-600' 
                 : 'bg-white/90 backdrop-blur-sm text-gray-600 hover:bg-red-100 hover:text-red-600'
             }`}
+            disabled={isAnimating}
           >
-            <Heart className={`w-5 h-5 transition-all duration-300 ${isInWishlist ? 'fill-current scale-110' : ''}`} />
+            <Heart className={`w-5 h-5 transition-all duration-300 ${isInWishlist ? 'fill-current' : ''}`} />
           </button>
         </div>
 
@@ -406,13 +586,13 @@ const CartNotifications = () => {
 
           <button
             onClick={() => addToCart(product)}
-            disabled={!product.inStock}
+            disabled={!product.inStock || isAddToCartAnimating}
             className={`w-full py-3 rounded-lg font-medium transition-all duration-300 transform ${
               product.inStock 
-                ? isInCart
-                  ? 'bg-green-600 text-white hover:bg-green-700 hover:scale-105'
+                ? isInCart && !isAddToCartAnimating
+                  ? 'bg-green-600 text-white hover:bg-green-700'
                   : isAddToCartAnimating
-                    ? 'bg-purple-600 text-white scale-105 animate-pulse'
+                    ? 'bg-blue-500 text-white cursor-wait'
                     : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 hover:scale-105'
                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'
             }`}
@@ -438,7 +618,97 @@ const CartNotifications = () => {
         </div>
       </div>
     );
+  });
+
+  // Enhanced Cart Notifications Component
+  const CartNotifications = () => {
+    if (cartNotifications.length === 0) return null;
+    
+    return (
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {cartNotifications.map((notification) => (
+          <div
+            key={notification.id}
+            className={`p-4 rounded-lg shadow-lg transform transition-all duration-500 max-w-sm ${
+              notification.type === 'success' ? 'bg-green-500 text-white' :
+              notification.type === 'error' ? 'bg-red-500 text-white' :
+              notification.type === 'info' ? 'bg-blue-500 text-white' :
+              'bg-gray-800 text-white'
+            }`}
+          >
+            <div className="flex items-start space-x-2">
+              {notification.type === 'success' && <Check className="w-5 h-5 mt-0.5 flex-shrink-0" />}
+              {notification.type === 'error' && <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />}
+              {notification.type === 'info' && <Package className="w-5 h-5 mt-0.5 flex-shrink-0" />}
+              <span className="text-sm">{notification.message}</span>
+              <button
+                onClick={() => setCartNotifications(prev => prev.filter(n => n.id !== notification.id))}
+                className="ml-auto hover:bg-white/20 rounded p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   };
+
+  // Enhanced Cart Summary Component
+  const CartSummary = ({ className = "" }) => (
+    <div className={`bg-white rounded-lg shadow-lg p-6 ${className}`}>
+      <h3 className="text-xl font-bold mb-6 flex items-center">
+        <ShoppingBag className="w-5 h-5 mr-2" />
+        Order Summary
+      </h3>
+      
+      <div className="space-y-3 mb-6">
+        <div className="flex justify-between text-gray-700">
+          <span>Subtotal ({getCartItemCount()} items)</span>
+          <span>${getCartSubtotal().toFixed(2)}</span>
+        </div>
+        
+        {appliedCoupon && (
+          <div className="flex justify-between text-green-600 font-medium">
+            <span>Discount ({appliedCoupon.code})</span>
+            <span>-${getCouponDiscount().toFixed(2)}</span>
+          </div>
+        )}
+        
+        <div className="flex justify-between text-gray-700">
+          <span>Shipping</span>
+          <span>{getShippingCost() === 0 ? 'FREE' : `$${getShippingCost().toFixed(2)}`}</span>
+        </div>
+        
+        <div className="flex justify-between text-gray-700">
+          <span>Tax</span>
+          <span>${getTaxAmount().toFixed(2)}</span>
+        </div>
+        
+        <div className="border-t pt-3">
+          <div className="flex justify-between text-xl font-bold">
+            <span>Total</span>
+            <span>${getCartTotal().toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+      
+      {estimatedDelivery && (
+        <div className="bg-blue-50 p-3 rounded-lg mb-4">
+          <div className="flex items-center text-sm text-blue-800">
+            <Truck className="w-4 h-4 mr-2" />
+            <span>Estimated delivery: {estimatedDelivery}</span>
+          </div>
+        </div>
+      )}
+      
+      <div className="text-xs text-gray-500">
+        <p>• Free shipping on orders over $100</p>
+        <p>• 30-day return policy</p>
+        <p>• Secure checkout guaranteed</p>
+      </div>
+    </div>
+  );
 
   // Home Page Component with Hero Section
   const HomePage = () => (
@@ -539,13 +809,13 @@ const CartNotifications = () => {
         <div className="absolute inset-0 bg-black/20"></div>
         <div className="relative max-w-7xl mx-auto px-4 py-24 sm:py-32">
           <div className="text-center">
-            <h1 className="text-5xl md:text-7xl font-bold mb-6 animate-fade-in">
+            <h1 className="text-5xl md:text-7xl font-bold mb-6">
               Welcome to <span className="text-yellow-300">ShopZen</span>
             </h1>
-            <p className="text-xl md:text-2xl mb-8 text-blue-100 max-w-3xl mx-auto animate-fade-in">
+            <p className="text-xl md:text-2xl mb-8 text-blue-100 max-w-3xl mx-auto">
               Discover amazing products at unbeatable prices. Your one-stop shop for everything you need!
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button 
                 onClick={() => {
                   document.getElementById('products-section')?.scrollIntoView({ behavior: 'smooth' });
@@ -820,16 +1090,13 @@ const CartNotifications = () => {
           -webkit-line-clamp: 2;
         }
       `}</style>
+
+      <CartNotifications />
     </div>
   );
 
-  // Cart Page Component
+  // Enhanced Cart Page Component
   const CartPage = () => {
-    const cartTotal = getCartTotal();
-    const shipping = cartTotal > 100 ? 0 : 9.99;
-    const tax = cartTotal * 0.08;
-    const finalTotal = cartTotal + shipping + tax;
-
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
         <header className="bg-white shadow-lg sticky top-0 z-50">
@@ -889,7 +1156,10 @@ const CartNotifications = () => {
         </header>
 
         <div className="max-w-7xl mx-auto px-4 py-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-8">Shopping Cart</h1>
+          <div className="mb-8">
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">Shopping Cart</h1>
+            <p className="text-gray-600">Review your items and proceed to checkout</p>
+          </div>
           
           {cart.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-xl shadow-lg">
@@ -904,252 +1174,210 @@ const CartNotifications = () => {
               </button>
             </div>
           ) : (
-            <div className="bg-white rounded-xl shadow-lg p-8">
-              <h2 className="text-2xl font-bold mb-6">Cart Items ({getCartItemCount()})</h2>
-              
-              {cart.map((item) => (
-                <div key={item.id} className="flex items-center space-x-4 py-4 border-b">
-                  <img src={item.image} alt={item.name} className="w-16 h-16 object-cover rounded-lg" />
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-lg">{item.name}</h3>
-                    <p className="text-gray-600">${item.price}</p>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Cart Items */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Cart Items List */}
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-2xl font-bold">Cart Items ({getCartItemCount()})</h2>
+                    {cart.length > 0 && (
+                      <button
+                        onClick={clearCart}
+                        className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center space-x-1"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>Clear Cart</span>
+                      </button>
+                    )}
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                      className="p-1 hover:bg-gray-100 rounded"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </button>
-                    <span className="px-3 py-1 bg-gray-100 rounded">{item.quantity}</span>
-                    <button
-                      onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                      className="p-1 hover:bg-gray-100 rounded"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => removeFromCart(item.id)}
-                      className="p-1 text-red-600 hover:bg-red-50 rounded"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  
+                  <div className="space-y-4">
+                    {cart.map((item) => (
+                      <div key={item.id} className="flex items-center space-x-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                        <img 
+                          src={item.image} 
+                          alt={item.name} 
+                          className="w-20 h-20 object-cover rounded-lg flex-shrink-0" 
+                        />
+                        
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-lg text-gray-900 truncate">{item.name}</h3>
+                          <p className="text-gray-600 text-sm mb-2">{item.brand}</p>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-lg font-bold text-blue-600">${item.price.toFixed(2)}</span>
+                            {item.originalPrice > item.price && (
+                              <span className="text-sm text-gray-500 line-through">${item.originalPrice.toFixed(2)}</span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center space-x-3">
+                          <div className="flex items-center border border-gray-300 rounded-lg">
+                            <button
+                              onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                              className="p-2 hover:bg-gray-100 text-gray-600 transition-colors"
+                            >
+                              <Minus className="w-4 h-4" />
+                            </button>
+                            <span className="px-4 py-2 font-medium text-center min-w-[3rem]">{item.quantity}</span>
+                            <button
+                              onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                              className="p-2 hover:bg-gray-100 text-gray-600 transition-colors"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </div>
+                          
+                          <div className="text-right">
+                            <div className="font-bold text-lg">${(item.price * item.quantity).toFixed(2)}</div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex flex-col space-y-2">
+                          <button
+                            onClick={() => saveForLater(item.id)}
+                            className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center space-x-1"
+                          >
+                            <Clock className="w-4 h-4" />
+                            <span>Save</span>
+                          </button>
+                          <button
+                            onClick={() => removeFromCart(item.id)}
+                            className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center space-x-1"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            <span>Remove</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-              
-              <div className="mt-6 pt-6 border-t">
-                <div className="text-right">
-                  <div className="text-2xl font-bold">Total: ${finalTotal.toFixed(2)}</div>
-                  <button className="mt-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-3 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-300 transform hover:scale-105">
-                    Proceed to Checkout
-                  </button>
+
+                {/* Coupon Section */}
+                <div className="bg-white rounded-xl shadow-lg p-6">
+                  <h3 className="text-xl font-bold mb-4 flex items-center">
+                    <Percent className="w-5 h-5 mr-2" />
+                    Promo Code
+                  </h3>
+                  
+                  {appliedCoupon ? (
+                    <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                          <Check className="w-5 h-5 text-green-600" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-green-800">{appliedCoupon.code}</p>
+                          <p className="text-sm text-green-600">{appliedCoupon.description}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={removeCoupon}
+                        className="text-green-600 hover:text-green-800 p-2 rounded-full hover:bg-green-100"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex space-x-2">
+                        <input
+                          type="text"
+                          placeholder="Enter promo code"
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value)}
+                          className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <button
+                          onClick={() => applyCoupon(couponCode)}
+                          disabled={!couponCode.trim()}
+                          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-medium"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                      
+                      <div className="text-sm text-gray-600">
+                        <p className="mb-2">Available coupons:</p>
+                        <div className="space-y-1">
+                          {availableCoupons.map((coupon) => (
+                            <button
+                              key={coupon.code}
+                              onClick={() => applyCoupon(coupon.code)}
+                              className="block text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              {coupon.code} - {coupon.description}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
+
+                {/* Saved for Later Section */}
+                {savedForLater.length > 0 && (
+                  <div className="bg-white rounded-xl shadow-lg p-6">
+                    <h3 className="text-xl font-bold mb-4 flex items-center">
+                      <Clock className="w-5 h-5 mr-2" />
+                      Saved for Later ({savedForLater.length})
+                    </h3>
+                    
+                    <div className="space-y-4">
+                      {savedForLater.map((item) => (
+                        <div key={item.id} className="flex items-center space-x-4 p-4 border border-gray-200 rounded-lg">
+                          <img 
+                            src={item.image} 
+                            alt={item.name} 
+                            className="w-16 h-16 object-cover rounded-lg flex-shrink-0" 
+                          />
+                          
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-gray-900">{item.name}</h4>
+                            <p className="text-gray-600 text-sm">${item.price.toFixed(2)}</p>
+                          </div>
+                          
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => moveToCart(item)}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                            >
+                              Move to Cart
+                            </button>
+                            <button
+                              onClick={() => removeFromSaved(item.id)}
+                              className="px-4 py-2 text-red-600 hover:text-red-800 transition-colors text-sm"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Cart Summary */}
+              <div className="lg:col-span-1">
+                <CartSummary />
+                
+                <button
+                  className="w-full mt-6 bg-gradient-to-r from-green-600 to-blue-600 text-white py-4 rounded-xl hover:from-green-700 hover:to-blue-700 transition-all duration-300 transform hover:scale-105 font-bold text-lg shadow-lg"
+                >
+                  Proceed to Checkout
+                </button>
               </div>
             </div>
           )}
         </div>
+
+        <CartNotifications />
       </div>
     );
   };
-  // Enhanced Cart Notifications
-const addCartNotification = (message, type = 'success') => {
-  const id = Date.now();
-  const notification = { id, message, type, timestamp: new Date() };
-  setCartNotifications(prev => [...prev, notification]);
-  
-  // Auto remove notification after 3 seconds
-  setTimeout(() => {
-    setCartNotifications(prev => prev.filter(n => n.id !== id));
-  }, 3000);
-};
-
-// Coupon Management
-const coupons = {
-  'SAVE10': { discount: 0.1, minAmount: 50, description: '10% off orders over $50' },
-  'WELCOME': { discount: 15, minAmount: 30, description: '$15 off orders over $30', type: 'fixed' },
-  'FREESHIP': { freeShipping: true, minAmount: 25, description: 'Free shipping on orders over $25' }
-};
-
-const applyCoupon = (code) => {
-  const coupon = coupons[code.toUpperCase()];
-  const cartTotal = getCartTotal();
-  
-  if (!coupon) {
-    addCartNotification('Invalid coupon code', 'error');
-    return false;
-  }
-  
-  if (cartTotal < coupon.minAmount) {
-    addCartNotification(`Minimum order amount is $${coupon.minAmount}`, 'error');
-    return false;
-  }
-  
-  setAppliedCoupon({ code: code.toUpperCase(), ...coupon });
-  addCartNotification('Coupon applied successfully!', 'success');
-  return true;
-};
-
-const removeCoupon = () => {
-  setAppliedCoupon(null);
-  addCartNotification('Coupon removed', 'info');
-};
-
-// Calculate discount
-const getDiscount = () => {
-  if (!appliedCoupon) return 0;
-  const cartTotal = getCartTotal();
-  
-  if (appliedCoupon.type === 'fixed') {
-    return appliedCoupon.discount;
-  } else {
-    return cartTotal * appliedCoupon.discount;
-  }
-};
-
-// Calculate shipping
-const getShipping = () => {
-  const cartTotal = getCartTotal();
-  if (appliedCoupon?.freeShipping && cartTotal >= appliedCoupon.minAmount) {
-    return 0;
-  }
-  return cartTotal > 100 ? 0 : 9.99;
-};
-
-// Save for Later functionality
-const saveForLater = (productId) => {
-  const item = cart.find(item => item.id === productId);
-  if (item) {
-    setSavedForLater(prev => [...prev, item]);
-    removeFromCart(productId);
-    addCartNotification('Item saved for later', 'info');
-  }
-};
-
-const moveToCart = (productId) => {
-  const item = savedForLater.find(item => item.id === productId);
-  if (item) {
-    setCart(prev => [...prev, item]);
-    setSavedForLater(prev => prev.filter(i => i.id !== productId));
-    addCartNotification('Item moved to cart', 'success');
-  }
-};
-
-const removeFromSavedForLater = (productId) => {
-  setSavedForLater(prev => prev.filter(i => i.id !== productId));
-  addCartNotification('Item removed from saved items', 'info');
-};
-
-// Quick Buy functionality
-const quickBuy = (product) => {
-  setQuickBuyItem(product);
-  // This would typically redirect to a quick checkout
-  addCartNotification('Quick buy initiated', 'success');
-};
-
-// Recently Viewed functionality
-const addToRecentlyViewed = (productId) => {
-  setRecentlyViewed(prev => {
-    const filtered = prev.filter(id => id !== productId);
-    return [productId, ...filtered].slice(0, 5); // Keep only 5 recent items
-  });
-};
-
-// Cart persistence (localStorage alternative using state)
-const saveCartToMemory = () => {
-  // In a real app, this would save to localStorage
-  const cartData = {
-    cart,
-    wishlist,
-    savedForLater,
-    appliedCoupon,
-    recentlyViewed
-  };
-  return cartData;
-};
-
-const loadCartFromMemory = (cartData) => {
-  if (cartData) {
-    setCart(cartData.cart || []);
-    setWishlist(cartData.wishlist || []);
-    setSavedForLater(cartData.savedForLater || []);
-    setAppliedCoupon(cartData.appliedCoupon || null);
-    setRecentlyViewed(cartData.recentlyViewed || []);
-  }
-};
-
-// Bulk cart operations
-const clearCartWithConfirmation = () => {
-  if (window.confirm('Are you sure you want to clear your cart?')) {
-    clearCart();
-    addCartNotification('Cart cleared', 'info');
-  }
-};
-
-const updateAllQuantities = (operation) => {
-  setCart(prev => prev.map(item => ({
-    ...item,
-    quantity: operation === 'increase' ? item.quantity + 1 : Math.max(1, item.quantity - 1)
-  })));
-  addCartNotification(`All quantities ${operation}d`, 'info');
-};
-
-// Enhanced quantity update with validation
-const updateQuantityEnhanced = (productId, newQuantity) => {
-  const product = products.find(p => p.id === productId);
-  
-  if (newQuantity <= 0) {
-    removeFromCart(productId);
-    return;
-  }
-  
-  if (product && newQuantity > product.stockCount) {
-    addCartNotification(`Only ${product.stockCount} items available`, 'error');
-    return;
-  }
-  
-  setCart(cart.map(item => 
-    item.id === productId 
-      ? { ...item, quantity: newQuantity }
-      : item
-  ));
-  
-  if (newQuantity > 5) {
-    addCartNotification('Large quantity detected - bulk discounts may apply', 'info');
-  }
-};
-
-// Stock validation
-const validateCartStock = () => {
-  const outOfStock = [];
-  const lowStock = [];
-  
-  cart.forEach(cartItem => {
-    const product = products.find(p => p.id === cartItem.id);
-    if (product) {
-      if (!product.inStock || product.stockCount === 0) {
-        outOfStock.push(cartItem);
-      } else if (cartItem.quantity > product.stockCount) {
-        lowStock.push({ ...cartItem, availableStock: product.stockCount });
-      }
-    }
-  });
-  
-  return { outOfStock, lowStock };
-};
-
-// Quick View functionality
-const openQuickView = (product) => {
-  setQuickViewProduct(product);
-  setShowQuickView(true);
-  addToRecentlyViewed(product.id);
-};
-
-const closeQuickView = () => {
-  setShowQuickView(false);
-  setQuickViewProduct(null);
-};
-
 
   // Wishlist Page Component
   const WishlistPage = () => {
@@ -1210,11 +1438,13 @@ const closeQuickView = () => {
             </div>
           )}
         </div>
+        
+        <CartNotifications />
       </div>
     );
   };
 
-  // Login and Signup Pages (simplified)
+  // Login Page
   const LoginPage = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -1274,10 +1504,13 @@ const closeQuickView = () => {
             </div>
           </form>
         </div>
+        
+        <CartNotifications />
       </div>
     );
   };
 
+  // Signup Page
   const SignupPage = () => {
     const [formData, setFormData] = useState({
       firstName: '',
@@ -1300,7 +1533,7 @@ const closeQuickView = () => {
           <form className="bg-white p-8 rounded-xl shadow-lg space-y-4" onSubmit={(e) => {
             e.preventDefault();
             if (formData.password !== formData.confirmPassword) {
-              alert('Passwords do not match');
+              showNotification('Passwords do not match', 'error');
               return;
             }
             handleSignup(formData);
@@ -1372,6 +1605,8 @@ const closeQuickView = () => {
             </div>
           </form>
         </div>
+        
+        <CartNotifications />
       </div>
     );
   };
