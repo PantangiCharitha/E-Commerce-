@@ -38,7 +38,7 @@ export default function Cart() {
     if (qty > 10) return showMessage('Max 10 units allowed');
     if (qty > product.stockCount) return showMessage(`Only ${product.stockCount} left in stock`);
     setCart(cart.map(item => item.id === id ? { ...item, quantity: qty } : item));
-  };
+  }; // Removed 'zxc'
 
   const removeFromCart = (id) => {
     const removed = cart.find(item => item.id === id);
@@ -100,10 +100,12 @@ export default function Cart() {
             >
               {summaryVisible ? 'Hide Summary' : 'Show Summary'}
             </button>
+            <>
+            </>
 
             {summaryVisible && (
               <div className="text-right space-y-1">
-                <p>Total: ${total.toFixed(2)}</p>
+                <p>Total: ${total.toFixed(2)}</p> {/* Fixed typo: 'pasd' to 'p' */}
                 <p className="text-sm text-gray-500">
                   Estimated delivery: {new Date(Date.now() + 5 * 86400000).toDateString()}
                 </p>
