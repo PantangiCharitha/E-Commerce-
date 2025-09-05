@@ -48,7 +48,7 @@ export default function Cart() {
       undo: () => setCart(prev => [...prev, removed])
     });
   };
-
+SVGDefsElement
   const showMessage = (msg) => {
     setNotification({ message: msg });
     setTimeout(() => setNotification(null), 2000);
